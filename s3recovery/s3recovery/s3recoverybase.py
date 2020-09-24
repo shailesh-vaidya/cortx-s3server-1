@@ -91,6 +91,23 @@ class S3RecoveryBase:
             elif log_level == "critical":
                 self.logger.critical(msg)
 
+    def check_response(self, status, request, response, index_id, key):
+        """
+        Validate the response received from server
+
+        :status: Boolean response flag which determine success/failure of api.
+        :response: Success/Error response data received from the server.
+
+        """
+        if (status):
+            self.s3recovery_log("info", "Operation "+ request +" KV for key " + key + " on index "+ index_id + " success")
+        elif (response.get_error_status() == 404):
+            self.s3recovery_log("info", "Key " + key + " does not exist in index "+ index_id)
+        else:
+            self.s3recovery_log("error", "Operation "+ request +" KV for key " + key + " on index "+ index_id+ " failed")
+            self.s3recovery_log("error", "Response code "+ response.get_error_status())
+            self.s3recovery_log("error", "Error reason "+ response.get_error_reason())
+
     def put_kv(self, index_id, key, value):
         """
         Puts the given key-value to corresponding index-id
@@ -100,7 +117,8 @@ class S3RecoveryBase:
         :value: Value to be inserted
 
         """
-        self.kv_api.put(index_id, key, value)
+        status, response = self.kv_api.put(index_id, key, value)
+        self.check_response(status, "put", response, index_id, key)
 
     def perform_cleanup(self, key, index_id, index_id_replica):
         """
@@ -111,8 +129,10 @@ class S3RecoveryBase:
         :index_id_replica: Replica Index Id for which KV needs to be cleaned
 
         """
-        self.kv_api.delete(index_id, key)
-        self.kv_api.delete(index_id_replica, key)
+        status, response = self.kv_api.delete(index_id, key)
+        self.check_response(status, "delete", response, index_id, key)
+        replica_status, replica_response = self.kv_api.delete(index_id_replica, key)
+        self.check_response(replica_status, "delete", replica_response, index_id_replica, key)
 
 
     def perform_validation(self, key, data_to_restore, item_replica, union_result):
@@ -296,10 +316,6 @@ class S3RecoveryBase:
                 replica_value = None
 
             self.perform_validation(key, metadata_value, replica_value, union_result)
-
-            # Perform cleanup for existing indices during recovery
-            if (recover_flag):
-                self.perform_cleanup(key, index_id, index_id_replica)
 
         if (self.log_result):
             self.s3recovery_log("info", "\nData recovered from both indexes for {} \n".format(index_name))

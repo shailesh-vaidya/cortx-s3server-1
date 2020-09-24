@@ -31,6 +31,32 @@ class S3RecoverCorruption(S3RecoveryBase):
         super(S3RecoverCorruption, self).create_logger_directory()
         super(S3RecoverCorruption, self).create_logger("S3RecoverCorruption")
 
+    def cleanup_entries(self, index_id):
+        """
+        Performs cleanup of stale data entries
+
+        """
+        list_index_response = self.list_index(index_id)
+        data_as_dict = self.parse_index_list_response(list_index_response)
+        key_list = list(data_as_dict.keys())
+        for key in key_list:
+            if key not in self.common_keys:
+                self.kv_api.delete(index_id,key)
+
+    def cleanup_metadata_entries(self, index_id):
+        """
+        Performs cleanup of stale data entries
+        """
+
+        list_index_response = self.list_index(index_id)
+        data_as_dict = self.parse_index_list_response(list_index_response)
+        key_list = list(data_as_dict.keys())
+        for key in key_list:
+            temp = key.split('/')[1]
+            if temp not in self.common_keys:
+                self.kv_api.delete(index_id, key)
+
+
     def restore_data(self, list_index_id, list_index_id_replica, metadata_index_id,
             metadata_index_id_replica):
         """
@@ -47,6 +73,9 @@ class S3RecoverCorruption(S3RecoveryBase):
                 self.s3recovery_log("info", "Recovering {} {}".format(key,value))
                 super(S3RecoverCorruption, self).put_kv(list_index_id, key, value)
                 super(S3RecoverCorruption, self).put_kv(list_index_id_replica, key, value)
+
+        self.cleanup_entries(list_index_id)
+        self.cleanup_entries(list_index_id_replica)
 
         """ Sample entry in bucket metadata table
         i.e self.metadata_result contents
@@ -67,6 +96,9 @@ class S3RecoverCorruption(S3RecoveryBase):
                 self.s3recovery_log("info", "Recovering {} {}".format(key,value))
                 super(S3RecoverCorruption, self).put_kv(metadata_index_id, key, value)
                 super(S3RecoverCorruption, self).put_kv(metadata_index_id_replica, key, value)
+
+        self.cleanup_metadata_entries(metadata_index_id)
+        self.cleanup_metadata_entries(metadata_index_id_replica)
 
         self.s3recovery_log("info", "Success")
 
